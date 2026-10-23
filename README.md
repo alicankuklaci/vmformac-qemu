@@ -32,11 +32,14 @@ repository.
   and where each hash was checked.
 - `scripts/qemu/check-deps.sh`: checks that the runtime links only macOS
   system libraries and its own `lib/`.
-- `scripts/qemu/patches/`: patches applied on top of upstream. **There are none
-  at present.** No upstream source file is changed.
+- `scripts/qemu/patches/`: patches applied on top of upstream. There is one:
+  `qemu/0001-file-posix-compressed-files-are-data-on-macOS.patch` (QEMU's
+  `block/file-posix.c` reads HFS+/APFS-compressed files as data instead of
+  as one trailing hole). No other upstream source file is changed.
 - `scripts/qemu/branding/`: the VMForMac boot logo (`vmformac-logo.png`) and
   `png2bmp.py`, which turns it into the `Logo.bmp` that replaces edk2's TianoCore
-  logo before the firmware is built. That is the only change to any source tree.
+  logo before the firmware is built. Apart from the patch above, that is the only
+  change to any source tree.
 - `scripts/qemu/README.md`: build details (output layout, timings, Secure Boot
   variable store).
 - `licenses/<component>/`: the licence texts of each component. `COPYING` (GPL v2),
@@ -197,3 +200,6 @@ Each release tag names the QEMU version and a revision, and its assets are the
   the edk2 build (`scripts/qemu/branding/`, `VMFORMAC_FIRMWARE_*`). The source
   archives are unchanged from r1. This is the build in the first App Store
   release of VMForMac.
+- Next (unreleased, tag to follow with the VMForMac build that ships it):
+  `scripts/qemu/patches/qemu/0001-file-posix-compressed-files-are-data-on-macOS.patch`.
+  The source archives are unchanged.

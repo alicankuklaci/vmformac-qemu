@@ -140,7 +140,14 @@ How isolation works:
 (component directory names: `qemu`, `glib`, `pcre2`, `libffi`, `pixman`,
 `libslirp`, `spice-protocol`, `qemu-dtc`, `pkgconf`, `m4`, `autoconf`, `automake`,
 `libtool`, `openssl`, `libtasn1`, `json-glib`, `libtpms`, `swtpm`, `acpica`,
-`qemu-edk2` (the QEMU tarball unpacked again for its `roms/edk2`)). There are none at present.
+`qemu-edk2` (the QEMU tarball unpacked again for its `roms/edk2`)).
+
+- `qemu/0001-file-posix-compressed-files-are-data-on-macOS.patch`: on macOS,
+  `lseek(SEEK_DATA)` fails with `ENXIO` at every offset of an HFS+/APFS-compressed
+  file, which `block/file-posix.c` took for a trailing hole, so the whole file
+  read as zeros. Apple's installer compresses the app bundle, so the pflash
+  firmware in `Contents/Resources/qemu` came up empty and the guest never started.
+  For a `UF_COMPRESSED` file that `ENXIO` now means "no information" (data).
 
 ## Build time
 
