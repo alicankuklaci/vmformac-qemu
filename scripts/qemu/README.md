@@ -127,8 +127,10 @@ How isolation works:
   architectures and the `firmware/*.json` descriptors are left out). QEMU finds
   `share/qemu` relative to its executable, so the tree can be moved anywhere. Binaries are ad-hoc signed,
   QEMU with `com.apple.security.hypervisor`; the app build re-signs them.
-  `share/licenses/` holds the licence texts (copied into the app's
-  `Contents/Resources/Licenses/`).
+  `share/licenses/` holds the licence texts. The app bundles take only part of
+  `share/qemu/` (no `vgabios*.bin`, one ROM, one keymap, no empty vars
+  template) and all of `share/licenses/` except `seabios-vgabios/`: see the
+  allow-list in `scripts/stage-qemu-data.sh`.
 - `build/qemu-src/` — corresponding source for the GPL source repository:
   `README.md` (from `payload-README.md`), `sources/` (every archive),
   `SHA256SUMS`, `scripts/qemu/` (build scripts, `versions.env`, `patches/`) and

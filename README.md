@@ -8,9 +8,10 @@ The repository also records how every one of those files was produced.
 
 It exists to meet the source-code terms of the licences below:
 
-- GNU GPL v2: QEMU, dtc and keycodemapdb inside QEMU, and the iPXE ROMs.
+- GNU GPL v2: QEMU, dtc and keycodemapdb inside QEMU, and the iPXE ROM.
 - GNU LGPL v2.0/v2.1: GLib, proxy-libintl and JSON-GLib.
-- GNU LGPL v3: the SeaBIOS VGA BIOS ROMs.
+- GNU LGPL v3: the SeaBIOS VGA BIOS ROMs, only for the VMForMac builds that
+  shipped them (with `qemu-11.1.2-r2`, see Releases). Later builds leave them out.
 
 VMForMac's own code (the app, `vmfctl`, the VMForMac Agent) is not part of this
 repository.
@@ -44,7 +45,8 @@ repository.
   variable store).
 - `licenses/<component>/`: the licence texts of each component. `COPYING` (GPL v2),
   `COPYING.LIB` (LGPL v2.1) and `COPYING.LGPLv3` (with the GPL v3 it refers to,
-  `COPYING.GPLv3`) are at the top level.
+  `COPYING.GPLv3`; for the SeaBIOS VGA BIOS of earlier builds) are at the top
+  level.
 
 ## Components and licences
 
@@ -53,9 +55,9 @@ repository.
 | QEMU | 11.1.2 | GPL-2.0-only (parts GPL-2.0-or-later, LGPL, BSD, MIT) | `Helpers/qemu-system-aarch64`, `Resources/qemu/keymaps` | `qemu-11.1.2.tar.xz` |
 | dtc / libfdt | 1.8.1 | GPL-2.0-or-later OR BSD-2-Clause | statically linked into QEMU | `dtc-1.8.1.tar.xz` |
 | keycodemapdb, berkeley-softfloat-3 | in the QEMU tarball | GPL-2.0-or-later OR BSD-3-Clause / BSD-3-Clause | compiled into QEMU | `qemu-11.1.2.tar.xz` (`subprojects/`) |
-| iPXE EFI ROMs | prebuilt by QEMU (`pc-bios/efi-*.rom`) | GPL-2.0-or-later (parts UBDL) | `Resources/qemu/efi-*.rom` | `qemu-11.1.2.tar.xz` (`roms/ipxe`, `roms/Makefile`) |
-| SeaBIOS VGA BIOS | 1.17.0, prebuilt by QEMU (`pc-bios/vgabios*.bin`) | LGPL-3.0-only | `Resources/qemu/vgabios*.bin` | `qemu-11.1.2.tar.xz` (`roms/seabios`, `roms/config.vga-*`) |
-| edk2 firmware | edk2-stable202408 (`roms/edk2` in the QEMU tarball) | BSD-2-Clause-Patent and others (incl. OpenSSL in CryptoPkg), see `edk2-licenses.txt` | `Resources/qemu/edk2-aarch64-code.fd`, `edk2-aarch64-vars.fd`, `edk2-aarch64-vars-ms.fd` | `qemu-11.1.2.tar.xz` + `scripts/qemu/branding/` |
+| iPXE EFI ROM | prebuilt by QEMU (`pc-bios/efi-virtio.rom`) | GPL-2.0-or-later (parts UBDL) | `Resources/qemu/efi-virtio.rom` (builds with `qemu-11.1.2-r2`: all `efi-*.rom`) | `qemu-11.1.2.tar.xz` (`roms/ipxe`, `roms/Makefile`) |
+| SeaBIOS VGA BIOS | 1.17.0, prebuilt by QEMU (`pc-bios/vgabios*.bin`) | LGPL-3.0-only | not shipped any more (builds with `qemu-11.1.2-r2`: `Resources/qemu/vgabios*.bin`) | `qemu-11.1.2.tar.xz` (`roms/seabios`, `roms/config.vga-*`) |
+| edk2 firmware | edk2-stable202408 (`roms/edk2` in the QEMU tarball) | BSD-2-Clause-Patent and others (incl. OpenSSL in CryptoPkg), see `edk2-licenses.txt` | `Resources/qemu/edk2-aarch64-code.fd`, `edk2-aarch64-vars-ms.fd` (builds with `qemu-11.1.2-r2` also `edk2-aarch64-vars.fd`) | `qemu-11.1.2.tar.xz` + `scripts/qemu/branding/` |
 | GLib | 2.90.1 | LGPL-2.1-or-later | `Frameworks/libglib-2.0.0.dylib`, `libgobject-2.0.0.dylib`, `libgio-2.0.0.dylib`, `libgmodule-2.0.0.dylib` | `glib-2.90.1.tar.xz` |
 | proxy-libintl | 0.5 | LGPL-2.0-or-later | `Frameworks/libintl.8.dylib` | `proxy-libintl-0.5.tar.gz` |
 | JSON-GLib | 1.10.8 | LGPL-2.1-or-later | `Frameworks/libjson-glib-1.0.0.dylib` | `json-glib-1.10.8.tar.xz` |
@@ -68,10 +70,15 @@ repository.
 | libtpms | 0.10.2 | BSD-3-Clause (and the TCG reference code licence, see LICENSE) | `Frameworks/libtpms.0.dylib` | `libtpms-0.10.2.tar.gz` |
 | OpenSSL | 3.5.9 | Apache-2.0 | `Frameworks/libcrypto.3.dylib` | `openssl-3.5.9.tar.gz` |
 
-QEMU's prebuilt iPXE and SeaBIOS VGA ROMs are shipped unchanged from the QEMU
-tarball's `pc-bios/`. Their sources are the `roms/ipxe` and `roms/seabios`
-trees of the same tarball, and `roms/Makefile` (with `roms/config.vga-*`)
-rebuilds them.
+QEMU's prebuilt iPXE ROM `efi-virtio.rom` is shipped unchanged from the QEMU
+tarball's `pc-bios/`. Its source is the `roms/ipxe` tree of the same tarball,
+and `roms/Makefile` rebuilds it. The build installs more of `pc-bios/` (the
+other NICs' iPXE ROMs and SeaBIOS's `vgabios*.bin`), but VMForMac copies into
+the app only the data files its QEMU command line opens: `edk2-aarch64-code.fd`,
+`edk2-aarch64-vars-ms.fd`, `edk2-licenses.txt`, `efi-virtio.rom` and
+`keymaps/en-us` (an allow-list in VMForMac's `scripts/stage-qemu-data.sh`).
+Builds with `qemu-11.1.2-r2` shipped all of `share/qemu/`, including the
+SeaBIOS VGA BIOS, whose source is `roms/seabios` (with `roms/config.vga-*`).
 
 Nothing GPL or LGPL goes onto the guest driver disk ("VMForMac Driver"). It
 holds VMForMac's own setup script and agent; the agent's notices are on that
@@ -112,9 +119,10 @@ libtpms, swtpm and the rest) are in `scripts/qemu/build.sh`, next to the
 
 The build produces:
 
-- `build/qemu-dist/`: the relocatable runtime as bundled in the app, with
-  `bin/qemu-system-aarch64`, `bin/swtpm`, `lib/*.dylib`, `share/qemu/` and
-  `share/licenses/`. The dylibs have install names `@rpath/<name>`. The helpers
+- `build/qemu-dist/`: the relocatable runtime the app is bundled from, with
+  `bin/qemu-system-aarch64`, `bin/swtpm`, `lib/*.dylib`, `share/qemu/` (the app
+  takes only the files listed above) and `share/licenses/` (all but
+  `seabios-vgabios/`). The dylibs have install names `@rpath/<name>`. The helpers
   look in `@executable_path/../lib`; the app changes that rpath to
   `@executable_path/../Frameworks`.
 - `build/qemu-src/`: this repository's content again.
@@ -203,3 +211,7 @@ Each release tag names the QEMU version and a revision, and its assets are the
 - Next (unreleased, tag to follow with the VMForMac build that ships it):
   `scripts/qemu/patches/qemu/0001-file-posix-compressed-files-are-data-on-macOS.patch`.
   The source archives are unchanged.
+  The app bundle no longer carries the SeaBIOS VGA BIOS (`vgabios*.bin`), the
+  iPXE ROMs other than `efi-virtio.rom`, keymaps other than `en-us`, or the
+  empty `edk2-aarch64-vars.fd`: QEMU never opens them for VMForMac's Windows
+  guests. The build itself is unchanged.
