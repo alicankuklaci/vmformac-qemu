@@ -150,6 +150,16 @@ How isolation works:
   read as zeros. Apple's installer compresses the app bundle, so the pflash
   firmware in `Contents/Resources/qemu` came up empty and the guest never started.
   For a `UF_COMPRESSED` file that `ENXIO` now means "no information" (data).
+- `libslirp/0001-udp-icmp-connect-sockets-for-the-macOS-App-Sandbox.patch`: in the
+  App Sandbox without `com.apple.security.network.server`, datagrams arriving on an
+  *unconnected* UDP or ICMP socket are refused (`deny(1) network-inbound`, `recv()`
+  fails with `EPERM`), so guest DNS, other UDP and ping got no reply. slirp now keeps
+  one host UDP socket per guest source and destination and `connect()`s it
+  (`udp_solookup()`, `sosendto()`), and `connect()`s each ICMP echo socket; a
+  connected socket receives its replies with `network.client` alone. Host-forwarding
+  UDP listeners are unchanged. Guest-visible differences: one host port per
+  destination instead of one per guest port, and datagrams from hosts the guest has
+  not sent to on that port are dropped.
 
 ## Build time
 

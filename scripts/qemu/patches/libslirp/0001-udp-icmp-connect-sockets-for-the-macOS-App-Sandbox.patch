@@ -1,0 +1,219 @@
+From: VMForMac <alican.kuklaci@gmail.com>
+Subject: [PATCH] udp, icmp: connect() host sockets so replies arrive in the macOS App Sandbox
+
+In the macOS App Sandbox, a process with com.apple.security.network.client
+but without com.apple.security.network.server may send on an unconnected
+UDP or ICMP datagram socket, but every datagram that arrives on it is
+refused ("Sandbox: ... deny(1) network-inbound local:*:<port>", recv()
+fails with EPERM). slirp sends guest UDP and ICMP with sendto() on
+unconnected sockets, so guest DNS, NTP, any other UDP and ping got no
+reply (the guest saw "Connection refused"). On a connect()ed socket the
+reply is allowed with network.client alone, so:
+
+- udp_input()/udp6_input() look a socket up by guest source *and*
+  destination (udp_solookup()); each destination gets its own host
+  socket. Host-forwarding listeners (SS_HOSTFWD) are still found by the
+  guest address alone.
+- sosendto() connect()s a non-forwarding socket to its (translated)
+  destination and uses send(); it connects again if that address changes
+  (e.g. a new host DNS server behind the virtual nameserver).
+- icmp_send()/icmp6_send() connect() the per-echo socket and send().
+
+Guest-visible differences: a guest port that talks to several hosts uses
+one host port per destination instead of one in total, and datagrams from
+a host the guest has not sent to on that port (or from another port of
+it) are no longer delivered. No explicit bind() is made (none was before,
+outside host forwarding and -outbound addresses).
+
+---
+--- a/src/ip6_icmp.c
++++ b/src/ip6_icmp.c
+@@ -92,13 +92,15 @@
+     so->so_state = SS_ISFCONNECTED;
+     so->so_expire = curtime + SO_EXPIRE;
+ 
++    memset(&addr, 0, sizeof(addr));
+     addr.sin6_family = AF_INET6;
+     addr.sin6_addr = so->so_faddr6;
+ 
+     slirp_insque(so, &so->slirp->icmp);
+ 
+-    if (sendto(so->s, m->m_data + hlen, m->m_len - hlen, 0,
+-               (struct sockaddr *)&addr, sizeof(addr)) == -1) {
++    /* connect() + send(): see icmp_send() in ip_icmp.c */
++    if (connect(so->s, (struct sockaddr *)&addr, sizeof(addr)) == -1 ||
++        send(so->s, m->m_data + hlen, m->m_len - hlen, 0) == -1) {
+         DEBUG_MISC("icmp6_input icmp sendto tx errno = %d-%s", errno,
+                    g_strerror(errno));
+         icmp6_send_error(m, ICMP6_UNREACH, ICMP6_UNREACH_NO_ROUTE);
+--- a/src/ip_icmp.c
++++ b/src/ip_icmp.c
+@@ -141,13 +141,20 @@
+     so->so_state = SS_ISFCONNECTED;
+     so->so_expire = curtime + SO_EXPIRE;
+ 
++    memset(&addr, 0, sizeof(addr));
+     addr.sin_family = AF_INET;
+     addr.sin_addr = so->so_faddr;
+ 
+     slirp_insque(so, &so->slirp->icmp);
+ 
+-    if (sendto(so->s, m->m_data + hlen, m->m_len - hlen, 0,
+-               (struct sockaddr *)&addr, sizeof(addr)) == -1) {
++    /*
++     * connect() + send() instead of sendto(): the macOS App Sandbox delivers
++     * the reply to a connected ICMP socket with network.client alone; an
++     * unconnected one would need network.server.  The socket only ever talks
++     * to this one destination.
++     */
++    if (connect(so->s, (struct sockaddr *)&addr, sizeof(addr)) == -1 ||
++        send(so->s, m->m_data + hlen, m->m_len - hlen, 0) == -1) {
+         DEBUG_MISC("icmp_input icmp sendto tx errno = %d-%s", errno,
+                    g_strerror(errno));
+         icmp_send_error(m, ICMP_UNREACH, ICMP_UNREACH_NET, 0, g_strerror(errno));
+--- a/src/socket.c	2026-09-22 08:46:45
++++ b/src/socket.c	2026-10-26 14:38:50
+@@ -782,9 +782,30 @@
+         return -1;
+     }
+ 
+-    /* Don't care what port we get */
+-    ret = sendto(so->s, m->m_data, m->m_len, 0, (struct sockaddr *)&addr,
+-                 sockaddr_size(&addr));
++    if (so->so_state & SS_HOSTFWD) {
++        /* Bound host-forwarding socket: reply to whoever sent to it */
++        ret = sendto(so->s, m->m_data, m->m_len, 0, (struct sockaddr *)&addr,
++                     sockaddr_size(&addr));
++    } else {
++        /*
++         * connect() the socket to its destination (udp_solookup() gives each
++         * destination its own socket) and send(); the OS picks the source
++         * port on the first connect() and keeps it.  The macOS App Sandbox
++         * allows replies on a connected UDP socket with network.client
++         * alone; an unconnected one would need network.server.  Connect
++         * again if the translated address changed (e.g. a new host DNS
++         * server for the virtual nameserver).
++         */
++        if (!sockaddr_equal(&so->so_conn, &addr)) {
++            if (connect(so->s, (struct sockaddr *)&addr,
++                        sockaddr_size(&addr)) < 0) {
++                so->so_conn.ss_family = 0;
++                return -1;
++            }
++            so->so_conn = addr;
++        }
++        ret = send(so->s, m->m_data, m->m_len, 0);
++    }
+     if (ret < 0)
+         return -1;
+ 
+--- a/src/socket.h	2026-09-22 08:46:45
++++ b/src/socket.h	2026-10-26 14:38:50
+@@ -86,6 +86,9 @@
+ 
+     struct sbuf so_rcv; /* Receive buffer */
+     struct sbuf so_snd; /* Send buffer */
++
++    /* UDP: host address the socket is connect()ed to (ss_family 0: none) */
++    struct sockaddr_storage so_conn;
+ };
+ 
+ 
+--- a/src/udp.c
++++ b/src/udp.c
+@@ -74,8 +74,8 @@
+     int len;
+     struct ip save_ip;
+     struct socket *so;
+-    struct sockaddr_storage lhost;
+-    struct sockaddr_in *lhost4;
++    struct sockaddr_storage lhost, fhost;
++    struct sockaddr_in *lhost4, *fhost4;
+     int ttl;
+ 
+     DEBUG_CALL("udp_input");
+@@ -170,7 +170,12 @@
+     /*
+      * Locate pcb for datagram.
+      */
+-    so = solookup(&slirp->udp_last_so, &slirp->udb, &lhost, NULL);
++    memset(&fhost, 0, sizeof(fhost));
++    fhost4 = (struct sockaddr_in *)&fhost;
++    fhost4->sin_family = AF_INET;
++    fhost4->sin_addr = ip->ip_dst;
++    fhost4->sin_port = uh->uh_dport;
++    so = udp_solookup(slirp, &lhost, &fhost);
+ 
+     if (so == NULL) {
+         /*
+@@ -303,6 +308,33 @@
+     error = ip_output(so, m);
+ 
+     return (error);
++}
++
++/*
++ * Find the socket for a datagram from the guest.  Each (guest source,
++ * destination) pair has its own host socket, which sosendto() connect()s to
++ * that destination: the macOS App Sandbox, without the
++ * com.apple.security.network.server entitlement, refuses to deliver datagrams
++ * to an unconnected UDP socket ("deny network-inbound"), but allows replies on
++ * a connected one (network.client).  Host-forwarding sockets (SS_HOSTFWD) are
++ * bound listeners and stay keyed by the guest address alone, as before.
++ */
++struct socket *udp_solookup(Slirp *slirp, const struct sockaddr_storage *lhost,
++                            const struct sockaddr_storage *fhost)
++{
++    struct socket *so;
++
++    so = solookup(&slirp->udp_last_so, &slirp->udb, lhost, fhost);
++    if (so != NULL) {
++        return so;
++    }
++    for (so = slirp->udb.so_next; so != &slirp->udb; so = so->so_next) {
++        if ((so->so_state & SS_HOSTFWD) &&
++            sockaddr_equal(&so->lhost.ss, lhost)) {
++            return so;
++        }
++    }
++    return NULL;
+ }
+ 
+ slirp_os_socket udp_attach(struct socket *so, unsigned short af)
+--- a/src/udp.h
++++ b/src/udp.h
+@@ -83,6 +83,8 @@
+ void udp_input(register struct mbuf *, int);
+ /* Create a host UDP socket, bound to this socket */
+ slirp_os_socket udp_attach(struct socket *, unsigned short af);
++struct socket *udp_solookup(Slirp *slirp, const struct sockaddr_storage *lhost,
++                            const struct sockaddr_storage *fhost);
+ /* Destroy socket */
+ void udp_detach(struct socket *);
+ 
+--- a/src/udp6.c
++++ b/src/udp6.c
+@@ -18,7 +18,7 @@
+     int iphlen = sizeof(struct ip6);
+     int len;
+     struct socket *so;
+-    struct sockaddr_in6 lhost;
++    struct sockaddr_in6 lhost, fhost;
+     int hop_limit;
+ 
+     DEBUG_CALL("udp6_input");
+@@ -90,8 +90,12 @@
+         goto bad;
+     }
+ 
+-    so = solookup(&slirp->udp_last_so, &slirp->udb,
+-                  (struct sockaddr_storage *)&lhost, NULL);
++    memset(&fhost, 0, sizeof(fhost));
++    fhost.sin6_family = AF_INET6;
++    fhost.sin6_addr = ip->ip_dst;
++    fhost.sin6_port = uh->uh_dport;
++    so = udp_solookup(slirp, (struct sockaddr_storage *)&lhost,
++                      (struct sockaddr_storage *)&fhost);
+ 
+     if (so == NULL) {
+         /* If there's no socket for this packet, create one. */

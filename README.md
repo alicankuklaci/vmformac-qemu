@@ -33,13 +33,18 @@ repository.
   and where each hash was checked.
 - `scripts/qemu/check-deps.sh`: checks that the runtime links only macOS
   system libraries and its own `lib/`.
-- `scripts/qemu/patches/`: patches applied on top of upstream. There is one:
+- `scripts/qemu/patches/`: patches applied on top of upstream. There are two:
   `qemu/0001-file-posix-compressed-files-are-data-on-macOS.patch` (QEMU's
   `block/file-posix.c` reads HFS+/APFS-compressed files as data instead of
-  as one trailing hole). No other upstream source file is changed.
+  as one trailing hole) and
+  `libslirp/0001-udp-icmp-connect-sockets-for-the-macOS-App-Sandbox.patch`
+  (libslirp `connect()`s the host UDP and ICMP sockets it opens for the guest,
+  one UDP socket per guest source and destination, so replies reach it in the
+  macOS App Sandbox without the `network.server` entitlement). No other
+  upstream source file is changed.
 - `scripts/qemu/branding/`: the VMForMac boot logo (`vmformac-logo.png`) and
   `png2bmp.py`, which turns it into the `Logo.bmp` that replaces edk2's TianoCore
-  logo before the firmware is built. Apart from the patch above, that is the only
+  logo before the firmware is built. Apart from the patches above, that is the only
   change to any source tree.
 - `scripts/qemu/README.md`: build details (output layout, timings, Secure Boot
   variable store).
@@ -209,7 +214,9 @@ Each release tag names the QEMU version and a revision, and its assets are the
   archives are unchanged from r1. This is the build in the first App Store
   release of VMForMac.
 - Next (unreleased, tag to follow with the VMForMac build that ships it):
-  `scripts/qemu/patches/qemu/0001-file-posix-compressed-files-are-data-on-macOS.patch`.
+  `scripts/qemu/patches/qemu/0001-file-posix-compressed-files-are-data-on-macOS.patch`
+  and `scripts/qemu/patches/libslirp/0001-udp-icmp-connect-sockets-for-the-macOS-App-Sandbox.patch`
+  (guest UDP, DNS and ping work in the App Sandbox without `network.server`).
   The source archives are unchanged.
   The app bundle no longer carries the SeaBIOS VGA BIOS (`vgabios*.bin`), the
   iPXE ROMs other than `efi-virtio.rom`, keymaps other than `en-us`, or the
